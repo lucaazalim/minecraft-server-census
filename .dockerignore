@@ -1,0 +1,11 @@
+node_modules
+dist
+data/db
+*.db
+*.db-wal
+*.db-shm
+.git
+.env
+.DS_Store
+README.md
+docs
