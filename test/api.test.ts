@@ -141,3 +141,32 @@ test('ApiReader: routes run on the reader thread over a read-only connection', a
     db.close();
   }
 });
+
+test('ResponseCache: warm() recomputes stale keys once, skips current ones; onInvalidate hooks run and unsubscribe', async () => {
+  const cache = new ResponseCache(10_000);
+  let calls = 0;
+  const compute = (text: string) => async () => {
+    calls++;
+    return { ...reply(text), store: true };
+  };
+  await cache.warm('/w', compute('w1'));
+  assert.equal(calls, 1, 'missing key: computed');
+  await cache.warm('/w', compute('w2'));
+  assert.equal(calls, 1, 'current key: left alone');
+  assert.equal((await cache.get('/w', compute('w3'))).etag, 'w1');
+
+  let hooks = 0;
+  let warming: Promise<unknown> = Promise.resolve();
+  const stop = cache.onInvalidate(() => {
+    hooks++;
+    warming = cache.warm('/w', compute('w4'));
+  });
+  cache.invalidate();
+  assert.equal(hooks, 1);
+  await warming;
+  assert.equal((await cache.get('/w', compute('w5'))).etag, 'w4', 'the hook refreshed it before the next request');
+  assert.equal(calls, 2);
+  stop();
+  cache.invalidate();
+  assert.equal(hooks, 1, 'unsubscribed');
+});

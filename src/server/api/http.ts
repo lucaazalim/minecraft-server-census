@@ -18,6 +18,22 @@ import { loadStaticDir, serveStatic, watchStaticDir, type StaticSite } from './s
 
 const log = logger('http');
 
+/**
+ * What the dashboard requests on first load (scope=all, range=24h, servers table defaults), in the exact query order
+ * the client builds (src/web/lib/api.ts, use-dashboard-params.ts, ServersTable.tsx). Recomputed after every sweep and
+ * probe run so the first viewer after a quiet period is answered from cache instead of waiting for every query.
+ */
+export const PREWARM_PATHS = [
+  '/api/timeseries?scope=all&hours=24',
+  '/api/top-servers?scope=all&hours=24',
+  '/api/profile?scope=all&days=1',
+  '/api/versions?scope=all',
+  '/api/software?scope=all',
+  '/api/probes?scope=all',
+  '/api/countries',
+  '/api/servers?scope=all&status=online&sort=players&dir=desc&page=1&limit=50',
+];
+
 function json(res: http.ServerResponse, body: unknown, status = 200, cache = 'no-store'): void {
   const text = JSON.stringify(body);
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': cache });
@@ -80,6 +96,14 @@ export function startHttpServer(db: Db): http.Server {
     site = next;
   });
   const reader = new ApiReader(db.file);
+  const compute = (key: string) => async () => {
+    const r = await reader.request(key);
+    return { status: r.status, body: r.body, gzip: r.gzip, etag: r.etag, store: r.cacheable };
+  };
+  const prewarm = () => {
+    for (const key of PREWARM_PATHS) apiCache.warm(key, compute(key)).catch((err) => log.warn(`prewarm ${key} failed`, err));
+  };
+  const stopPrewarm = apiCache.onInvalidate(prewarm);
   const server = http.createServer(async (req, res) => {
     const started = Date.now();
     try {
@@ -92,10 +116,7 @@ export function startHttpServer(db: Db): http.Server {
         }
         if (mainThreadRoute(db, url, res)) return;
         const key = url.pathname + url.search;
-        const reply = await apiCache.get(key, async () => {
-          const r = await reader.request(key);
-          return { status: r.status, body: r.body, gzip: r.gzip, etag: r.etag, store: r.cacheable };
-        });
+        const reply = await apiCache.get(key, compute(key));
         return sendReply(req, res, reply);
       }
       if (serveStatic(site, req, res, url)) return;
@@ -112,8 +133,12 @@ export function startHttpServer(db: Db): http.Server {
   server.keepAliveTimeout = 65_000;
   server.on('close', () => {
     stopWatching();
+    stopPrewarm();
     void reader.close();
   });
-  server.listen(config.httpPort, config.httpHost, () => log.info(`dashboard listening on http://${config.httpHost}:${config.httpPort}`));
+  server.listen(config.httpPort, config.httpHost, () => {
+    log.info(`dashboard listening on http://${config.httpHost}:${config.httpPort}`);
+    prewarm();
+  });
   return server;
 }

@@ -2,7 +2,8 @@
  * API response cache. The dashboard polls every minute but the data only changes when a sweep (every 10 minutes) or a
  * probe run finishes, so each distinct URL is computed at most once per data version, however many tabs are open.
  * A reply one version old is served immediately while the new one is computed (stale-while-revalidate), so the first
- * viewer after a sweep does not wait either; anything older is recomputed before answering.
+ * viewer after a sweep does not wait either; anything older is recomputed before answering. `onInvalidate` hooks run
+ * after each version bump (http.ts uses one to recompute the default dashboard, so it is warm even after a quiet hour).
  */
 export interface CachedReply {
   status: number;
@@ -22,12 +23,28 @@ export class ResponseCache {
   private entries = new Map<string, Entry>();
   private inflight = new Map<string, Promise<CachedReply>>();
   private bytes = 0;
+  private listeners: (() => void)[] = [];
 
   constructor(private readonly maxBytes: number) {}
 
   /** The data changed: every entry becomes stale (still served once while it refreshes). */
   invalidate(): void {
     this.version++;
+    for (const fn of this.listeners) fn();
+  }
+
+  /** Run `fn` after every invalidate(); returns the unsubscribe function. */
+  onInvalidate(fn: () => void): () => void {
+    this.listeners.push(fn);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== fn);
+    };
+  }
+
+  /** Recompute `key` now unless its reply is already current (no-op while a compute for it is in flight). */
+  warm(key: string, compute: () => Promise<CachedReply & { store: boolean }>): Promise<unknown> {
+    if (this.entries.get(key)?.version === this.version) return Promise.resolve();
+    return this.refresh(key, compute);
   }
 
   get size(): { entries: number; bytes: number } {

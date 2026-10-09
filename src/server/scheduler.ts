@@ -13,19 +13,13 @@ import { nowSec, sleep } from './util.js';
 
 const log = logger('scheduler');
 
-function sleepUntil(tsSec: number): Promise<void> {
-  const ms = Math.max(0, tsSec * 1000 - Date.now());
-  return new Promise((resolve) => {
-    const t = setTimeout(resolve, ms);
-    shutdownSignal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(t);
-        resolve();
-      },
-      { once: true },
-    );
-  });
+/**
+ * Milliseconds to sleep before the next once-a-second check of a wait that ends at `tsSec`. Each tick is one short
+ * sleep() that clears its timer and abort listener: racing a timer for the whole wait against a 1 s sleep left both
+ * behind on every tick, and over days of uptime the pile (the probe waits 24 h) cost more CPU than the machine has.
+ */
+function tickMs(tsSec: number): number {
+  return Math.min(1000, Math.max(0, tsSec * 1000 - Date.now()));
 }
 
 let sweepRequested = false;
@@ -95,7 +89,7 @@ async function sweepLoop(db: Db): Promise<void> {
     }
     // Wait for the next slot, but wake early when a manual sweep is requested.
     while (!isShuttingDown() && nowSec() < nextAt && !sweepRequested) {
-      await Promise.race([sleepUntil(nextAt), sleep(1000)]);
+      await sleep(tickMs(nextAt), shutdownSignal);
       if (blocklistRequested) await blocklistCheck(db, true);
     }
   }
@@ -106,7 +100,7 @@ async function probeLoop(db: Db): Promise<void> {
   let nextAt = nowSec() + config.probeInitialDelayMinutes * 60;
   state.probe.nextAt = nextAt;
   while (!isShuttingDown()) {
-    while (!isShuttingDown() && nowSec() < nextAt && !probeRequested) await Promise.race([sleepUntil(nextAt), sleep(1000)]);
+    while (!isShuttingDown() && nowSec() < nextAt && !probeRequested) await sleep(tickMs(nextAt), shutdownSignal);
     if (isShuttingDown()) return;
     probeRequested = false;
     try {

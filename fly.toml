@@ -10,9 +10,13 @@ kill_timeout = "30s"            # gives the sweep time to flush in-flight pings 
 [build]
   dockerfile = "Dockerfile"
 
-# Everything else keeps the defaults from src/server/config.ts (see the README table); only the volume path differs.
+# Everything else keeps the defaults from src/server/config.ts (see the README table), except:
+#  - DATA_DIR: the volume path;
+#  - DNS_CACHE_MINUTES: re-resolve each host hourly instead of every other sweep (DNS was a large share of a sweep's CPU
+#    on the shared vCPU, whose 6.25% baseline quota is the machine's tightest limit).
 [env]
   DATA_DIR = "/data"
+  DNS_CACHE_MINUTES = "60"
 
 [[mounts]]
   source = "mcdata"
