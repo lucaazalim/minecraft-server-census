@@ -2,11 +2,14 @@
 
 [![CI](https://github.com/lucaazalim/minecraft-server-census/actions/workflows/ci.yml/badge.svg)](https://github.com/lucaazalim/minecraft-server-census/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Live site](https://img.shields.io/badge/live-census.azal.im-brightgreen)](https://census.azal.im)
+
+> [!IMPORTANT]
+> **The public instance is no longer running.** census.azal.im was shut down in November 2026 and no new data is being collected.
+>
+> - **The data is archived.** The full SQLite database it collected (September 20 to November 3, 2026: 6,327 sweeps of 4,929 servers, about 37 million pings) is attached to the [`data-2026-11-03` release](https://github.com/lucaazalim/minecraft-server-census/releases/tag/data-2026-11-03).
+> - **You can run your own.** The project is open source (MIT) and still works: follow [Quick start](#quick-start) to run it locally, or [Deploy to Fly.io](#deploy-to-flyio-são-paulo) to host it. Put the archived `census.db` in `DATA_DIR` to start from the old history.
 
 **How many people are playing Minecraft Java Edition right now, and where?** This project pings thousands of public Minecraft servers every 10 minutes, counts each server once even when it hides behind a dozen hostnames, and puts the results on a public dashboard.
-
-**See it live at [census.azal.im](https://census.azal.im).**
 
 ![The dashboard: players online, servers online and the busiest servers over the last 24 hours](docs/dashboard.png)
 
@@ -188,7 +191,7 @@ There is no automatic discovery: `npm run discover` scrapes eight server-list si
 
 ## Deploy to Fly.io (São Paulo)
 
-The public instance runs at <https://census.azal.im> (Fly app `mc-server-census`, region `gru`). [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs typecheck, tests and the build on every pull request and push. Pushes to `main` of this repository then run `fly deploy --ha=false` with the `FLY_API_TOKEN` repository secret (a Fly deploy token). Forks skip the deploy job.
+The public instance ran here (Fly app `mc-server-census`, region `gru`) until November 2026. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs typecheck, tests and the build on every pull request and push; it no longer deploys.
 
 To run your own instance, pick a free app name in `fly.toml` (`fly apps create <name>`), create the volume, and deploy:
 
